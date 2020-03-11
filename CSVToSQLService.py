@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import gspread
 import os
-from gsheets import Sheets
+import wget
+import sys
+#from gsheets import Sheets
 
 
 def pStr(curStr):
@@ -43,7 +45,9 @@ def CreateTable(curFilePath, tableName, data):
     RegularCols = []
     RegularColsTypes = []
     for index, row in data.iterrows():
-        f.write(pStr(row['DEFINITION']) + " " + pStr(row['TYPE']) + " " + pStr(row['DESCRIPTION1']) + " " + pStr(row['DESCRIPTION2']) + ",\n")
+        curStr = pStr(row['DEFINITION']) + " " + pStr(row['TYPE']) + " " + pStr(row['DESCRIPTION1']) + " " + pStr(row['DESCRIPTION2'])
+        curStr = curStr.rstrip() + ",\n"
+        f.write(curStr)
         if(row['DESCRIPTION3'] == "PRIMARY KEY"):
             PrimaryKeys.append(row['DEFINITION'])
             PrimaryKeysTypes.append(row['TYPE'])
@@ -55,12 +59,12 @@ def CreateTable(curFilePath, tableName, data):
             for curPrimaryKeyIndex in range(len(PrimaryKeys)):
                 f.write(PrimaryKeys[curPrimaryKeyIndex])
                 if curPrimaryKeyIndex + 1 != len(PrimaryKeys):
-                    f.write(",")
+                    f.write(", ")
             f.write(")\n")  
-        #print(row['DEFINITION'], row['TYPE'], row['DESCRIPTION'])
-    #f.write("ALTER TABLE " + tableName + " ADD CONSTRAINT PK_" + tableName + " PRIMARY KEY (")
     
     f.write(");\n")
+    
+    f.write("DROP PROCEDURE IF EXISTS p_Update" + tableName + ";\n")
     f.write("CREATE PROCEDURE p_Update" + tableName + " ")
     for curPrimaryKeyIndex in range(len(PrimaryKeys)):
         f.write("@" + PrimaryKeys[curPrimaryKeyIndex] + " " + PrimaryKeysTypes[curPrimaryKeyIndex] + ", ")
@@ -79,6 +83,7 @@ def CreateTable(curFilePath, tableName, data):
     for curPrimaryKeyIndex in range(len(PrimaryKeys)):
         f.write(" " + PrimaryKeys[curPrimaryKeyIndex] + " = @" + PrimaryKeys[curPrimaryKeyIndex])
     f.write(";")
+    
     f.close()
     print(data)
 
@@ -88,13 +93,30 @@ def TakeApartCSV(filePath):
     df = pd.read_csv(filePath)
     CreateTable(curFilePath, tableName, df[['DEFINITION', 'TYPE', 'DESCRIPTION1', 'DESCRIPTION2', 'DESCRIPTION3']])
 
-def WgetAndTakeApart():
-    with open("./TableUrls.txt") as f:
+def TakeApartInnerFile():
+    with open("./tmp.txt") as f:
         for line in f:
             line = line.rstrip()
-            if not line or line[0] == '\n' or line[0] == '#':
+            if not line or line[0] == '\n':
                 continue
             print(line)
+
+def WgetAndTakeApart(sqlFilesLocation):
+    fileBeginning = ""
+    with open("./TableUrls.txt") as f:
+        index = -1
+        for line in f:
+            line = line.rstrip() 
+            if not line or line[0] == '\n' or line[0] == '#':
+                continue 
+            index += 1
+            if index == 0:
+                fileBeginning = line  
+                continue
+            fileLocation = sqlFilesLocation + "/" + line.split()[0] + ".csv"
+            if os.path.exists(fileLocation):
+                os.remove(fileLocation)
+            wget.download(fileBeginning + line.split()[1], fileLocation)
 
 def CheckFiles(sqlFilesLocation):
     filesCurrentlyExist = False
@@ -110,28 +132,15 @@ def CheckFiles(sqlFilesLocation):
         return 50
 
 def main():
+    f = open(os.devnull, 'w')
+    sys.stdout = f
     timeToWaitMillis = 50
-    """
-    sheets = Sheets.from_files('./client_secrets.json', './storage.json')
-    #s = sheets.get
-    args = argparser.parse_args()
-    args.noauth_local_webserver = True
-    docCode = "1m1u8f8SJu332OpwHlecQvMr5m8-5OPybKVk3IZSrvMk"
-    s = sheets[docCode]
-    print(s)
-    #sheets = Sheets.get(docCode)
-    #print(Sheets[docCode])
-    #doc = "https://docs.google.com/spreadsheets/d/1m1u8f8SJu332OpwHlecQvMr5m8-5OPybKVk3IZSrvMk/edit?usp=sharing"
-    #wget.download(doc)
-    
-    """
     sqlFilesLocation = "/home/ec2-user/ToDoMySql"
     filesCurrentlyExist = False
-    WgetAndTakeApart()
+    WgetAndTakeApart(sqlFilesLocation)
     while True:
-        sleep(timeToWaitMillis * 0.001)
-        break
-        #timeToWaitMillis = CheckFiles(sqlFilesLocation)
+        sleep(timeToWaitMillis * 0.001) 
+        timeToWaitMillis = CheckFiles(sqlFilesLocation)
         
 if __name__ == "__main__":
     main()
